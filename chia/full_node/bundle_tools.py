@@ -2,6 +2,8 @@ import re
 from typing import Optional, Tuple, List, Any
 
 from clvm import SExp
+from clvm.serialize import sexp_from_stream
+import io
 from clvm_tools import binutils
 
 from chia.full_node.generator import create_compressed_generator
@@ -18,11 +20,23 @@ def spend_bundle_to_coin_solution_entry_list(bundle: SpendBundle) -> List[Any]:
     for coin_solution in bundle.coin_solutions:
         entry = [
             coin_solution.coin.parent_coin_info,
-            coin_solution.puzzle_reveal,
+            sexp_from_stream(io.BytesIO(bytes(coin_solution.puzzle_reveal)), SExp.to),
             coin_solution.coin.amount,
-            coin_solution.solution,
+            sexp_from_stream(io.BytesIO(bytes(coin_solution.solution)), SExp.to),
         ]
         r.append(entry)
+    return r
+
+def spend_bundle_to_serialized_coin_solution_entry_list(bundle: SpendBundle) -> bytes:
+    r = b"\xff"
+    for coin_solution in bundle.coin_solutions:
+        r += b"\xff"
+        r += SExp.to(coin_solution.coin.parent_coin_info).as_bin() + b"\xff"
+        r += bytes(coin_solution.puzzle_reveal) + b"\xff"
+        r += SExp.to(coin_solution.coin.amount).as_bin() + b"\xff"
+        r += bytes(coin_solution.solution)
+        r += b"\x80"
+    r += b"\x80"
     return r
 
 
@@ -30,10 +44,16 @@ def simple_solution_generator(bundle: SpendBundle) -> BlockGenerator:
     """
     Simply quotes the solutions we know.
     """
-    cse_list = spend_bundle_to_coin_solution_entry_list(bundle)
-    block_program = SerializedProgram.from_bytes(SExp.to((binutils.assemble("#q"), [cse_list])).as_bin())
-    generator = BlockGenerator(block_program, [])
-    return generator
+    cse_list = spend_bundle_to_serialized_coin_solution_entry_list(bundle)
+    block_program = b"\xff"
+
+    block_program += SExp.to(binutils.assemble("#q")).as_bin()
+
+    block_program += b"\xff" + cse_list + b"\x80"
+
+    assert SExp.to((binutils.assemble("#q"), [spend_bundle_to_coin_solution_entry_list(bundle)])).as_bin() == block_program
+
+    return BlockGenerator(SerializedProgram.from_bytes(block_program), [])
 
 
 STANDARD_TRANSACTION_PUZZLE_PREFIX = r"""ff02ffff01ff02ffff01ff02ffff03ff0bffff01ff02ffff03ffff09ff05ffff1dff0bffff1effff0bff0bffff02ff06ffff04ff02ffff04ff17ff8080808080808080ffff01ff02ff17ff2f80ffff01ff088080ff0180ffff01ff04ffff04ff04ffff04ff05ffff04ffff02ff06ffff04ff02ffff04ff17ff80808080ff80808080ffff02ff17ff2f808080ff0180ffff04ffff01ff32ff02ffff03ffff07ff0580ffff01ff0bffff0102ffff02ff06ffff04ff02ffff04ff09ff80808080ffff02ff06ffff04ff02ffff04ff0dff8080808080ffff01ff0bffff0101ff058080ff0180ff018080ffff04ffff01"""  # noqa
