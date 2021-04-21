@@ -59,12 +59,12 @@ def match_standard_transaction_at_any_index(generator_body: bytes) -> Optional[T
         return None
 
 
-def match_standard_transaction_exactly_and_return_pubkey(puzzle: Program) -> Optional[bytes]:
+def match_standard_transaction_exactly_and_return_pubkey(puzzle: SerializedProgram) -> Optional[bytes]:
     m = STANDARD_TRANSACTION_PUZZLE_PATTERN.fullmatch(bytes(puzzle).hex())
     return None if m is None else hexstr_to_bytes(m.group(1))
 
 
-def compress_cse_puzzle(puzzle: Program):
+def compress_cse_puzzle(puzzle: SerializedProgram):
     return match_standard_transaction_exactly_and_return_pubkey(puzzle)
 
 
@@ -76,7 +76,7 @@ def compress_coin_solution(coin_solution: CoinSolution):
     ]
 
 
-def puzzle_suitable_for_compression(puzzle: Program):
+def puzzle_suitable_for_compression(puzzle: SerializedProgram):
     return True if match_standard_transaction_exactly_and_return_pubkey(puzzle) else False
 
 
